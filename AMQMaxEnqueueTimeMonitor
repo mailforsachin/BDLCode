@@ -1,0 +1,233 @@
+//-------------------------------------------------------------------------------------------------------------------------------
+// SCRIPT NAME:               AMQJMXMonitoring.bdf
+//-------------------------------------------------------------------------------------------------------------------------------
+// SCRIPT AUTHOR:             Sachin Tewari 
+// SCRIPT CREATE DATE  :      05/26/2016
+/*===============================================================================================================================
+                                  CHANGE LOG - ADD NEW ENTRIES TO TOP
+=================================================================================================================================
+ DATE        || VERSION  || AUTHOR  || TICKET || 				DESCRIPTION
+================================================================================================================================*/
+/* []
+--------------------------------------------------------------------------------------------------------------------------------
+   05/26/2016  || v. 1.0   || Sachin  || [] || Initial script recording
+--------------------------------------------------------------------------------------------------------------------------------
+
+//--------------------------------------------------------------------------------------------------------------------------------
+// SCRIPT DESCRIPTION:
+// []
+// v 1.0: Calculate the MaxEnqueueTime(ms) for the AMQueues
+//
+//        1. To setup, copy c:\temp\CMDLIN~1.JAR [say in a new execution server]. It uses cmdline-jmxclient-0.10.3 for accessing 
+//           beans;
+//        2. Set Java JDK Path(bin)
+//        3. Destination Queue names should be separated by a Pipe [|]
+// 
+//-------------------------------------------------------------------------------------------------------------------------------*/
+
+benchmark BMCTMARTRecorder
+
+use "webapi.bdh"
+use "kernel.bdh"
+use "logfunctions.bdh"
+
+dcluser
+  user
+    VUser
+  transactions
+    TInit           :begin;
+    TMain           : 1;
+     
+var
+  
+  hProcessId, hFile                        : number;
+  nStatus                                  : number;
+  sData,sData1,sData2, sConvertToNumber            : string;
+  nRead, nPos4,nLength, nPos, nTotalLength                              : number;
+  sArgs :string;
+  sregex:string;
+  match: boolean;
+  hregex:number;
+  sDestinationName, sStringSearchException1,sStringSearchException2: string(32768);
+  gToken1, gToken2: string (1024);
+  sDestinationNameArray: array [10] of string (1024);
+  count1, nData1, nPos2, nPos3: number;
+  sJavaPath,sJarPath,sHostHostname,sPortNumber,sBrokerType,sBrokerName,sDestinationType, sParseOutTime, sStringToSearch, sStringToSearchFrom: string;
+  
+  
+dclrand
+  
+dclfunc
+  
+  function TraverseMaxEnqueueTime(sDestinationNameSplit:string):string
+  
+  begin
+    
+    //log("Checking MaxEnqueueTime");
+     
+    nPos:=0;      
+    sArgs:= " -jar "+sJarPath +" - "+sHostHostname+":"+sPortNumber+" "+sBrokerType+",brokerName="+sBrokerName+",destinationType="+sDestinationType+",destinationName="+sDestinationNameSplit;
+     
+    //log(sArgs);
+    
+    hProcessId := ProcessInitialize("java.exe", PROCESS_ATTACHED ,sArgs, sJavaPath, "c:\\ARTM\\"+sDestinationNameSplit+"_Log.txt","c:\\ARTM\\"+sDestinationNameSplit+"_Output.txt");
+     
+    ProcessStart(hProcessId);
+
+     
+    Wait(10.0);    // Wait for process to finish
+
+    nStatus := ProcessGetState(hProcessId);
+
+    
+    if (nStatus <> PROCESS_STATE_FINISHED) then
+      ProcessKill(hProcessId, PROCESS_KILLSINGLE);
+    end;
+    
+        
+    FOpen(hFile, "c:\\ARTM\\"+sDestinationNameSplit+"_Output.txt", OPT_FILE_ACCESS_READ, OPT_FILE_OPEN);
+    
+    //log("c:\\temp\\"+sDestinationNameSplit+"_Output.txt");
+    
+    StrSetNull(sData);
+    StrSetNull(sParseOutTime);
+    
+    while FRead(hFile, sData, 1, nRead) do
+      strcat(sParseOutTime,sData);
+    end;
+    
+    
+    sStringToSearch :=":";
+    sStringSearchException1 :="bean";
+    sStringSearchException2 :="Exception";
+
+    sStringToSearchFrom :=sParseOutTime;
+    
+    nLength:= Strlen(sStringToSearchFrom);
+    
+    //Log("String to Search is: "+ sStringToSearch); 
+    //Log("String to Search from is: "+ sStringToSearchFrom);
+
+    nPos := StrSearch(sStringToSearchFrom, sStringToSearch,STR_SEARCH_FIRST | STR_SEARCH_REVERSE);
+    
+    //log(string(nPos));
+    
+    nPos2:=0;
+    nPos3:=0;
+     
+    nPos2 := StrSearch(sStringToSearchFrom,sStringSearchException1,STR_SEARCH_FIRST);
+    nPos3 := StrSearch(sStringToSearchFrom,sStringSearchException2,STR_SEARCH_FIRST);
+    
+    //log(string(nPos2));
+          
+    if NOT(nPos2 =0) OR NOT(nPos3=0) then
+      
+      log("Exception Found. Unable to retrieve values for "+ sDestinationNameSplit);
+      //Halt;
+      
+    else  
+    
+      //log(string(nPos));
+      
+      log("Value for " + sDestinationNameSplit +" has been retrieved");
+      nTotalLength:=nLength-nPos;
+      
+      //log(string(nTotalLength));
+          
+      FCurrentPositionSet(hFile, nPos+1, OPT_FILE_BEGIN);       
+      FRead(hFile, sData1, nTotalLength, nRead); 
+      
+      //log(sData1);  
+      
+      sConvertToNumber :=".";
+      
+      nPos4 := StrSearch(sData1,sConvertToNumber,STR_SEARCH_FIRST);
+      
+      //log(String(nPos4));
+      
+      FCurrentPositionSet(hFile, nPos, OPT_FILE_BEGIN);       
+      FRead(hFile, sData2, nPos4, nRead);
+      
+      //log(sData2);
+      
+      if (Number(sData2) > 1800000) then
+        
+        log("Value of " +sDestinationNameSplit +" is: " +sData2+" which is > 1800000 ms. Raising Error ");
+        
+        RaiseError(CUSTOM_ERROR, "Value of " +sDestinationNameSplit +" is: " +sData2+" which is > 1800000 ms. Raising Error ", SEVERITY_ERROR);
+      
+      
+      else
+        
+        log("Value of " +sDestinationNameSplit + " is: " + sData2);
+        
+      end;
+      
+          
+      FClose(hFile);
+      
+    end;
+    
+          
+  end TraverseMaxEnqueueTime;
+  
+dcltrans
+
+  transaction TInit
+  
+  var 
+    
+  begin
+    
+    
+    AttributeGetString("JavaPath", sJavaPath);
+    AttributeGetString("JarPath", sJarPath);
+    AttributeGetString("HostName", sHostHostname);
+    AttributeGetString("PortNumber", sPortNumber);
+    AttributeGetString("BrokerType", sBrokerType);
+    AttributeGetString("BrokerName", sBrokerName);
+    AttributeGetString("DestinationType", sDestinationType);
+    AttributeGetString("DestinationName", sDestinationName);
+    
+    
+  end TInit;
+
+
+transaction TMain
+var
+begin
+
+    /*
+    log("I am here");
+    log(sJavaPath);
+    log(sJarPath);
+    log(sHostHostname);
+    log(sPortNumber);
+    log(sBrokerType);
+    log(sBrokerName);
+    log(sDestinationType);
+    log(sDestinationName);
+    */
+      
+    gToken1 :=Strtok(sDestinationName, "|");
+    //log(gToken1);
+    count1 :=0; 
+    
+    while gToken1 <> "" do
+        count1:= count1 + 1;
+        sDestinationNameArray[count1] := gtoken1;
+        //log(sDestinationNameArray[count1]);
+        gToken1 := Strtok(NULL, "|");  
+    end;
+    
+    count1 :=1;  
+    
+    
+    while sDestinationNameArray[count1] <> "" do
+        TraverseMaxEnqueueTime(sDestinationNameArray[count1]);
+        count1:= count1 + 1;
+        //log(String(nPos));
+    end;
+
+      
+end TMain;

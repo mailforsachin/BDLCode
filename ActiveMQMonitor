@@ -1,0 +1,242 @@
+@codepage(1252)
+
+benchmark BMCTMARTRecorder
+
+use "WebAPI.bdh"
+use "logFunctions.bdh"
+
+dclparam
+  sParseIPSoftProdQueueValue    : string;
+  sParseOpasV2QueueValue        : string;
+  sParseDSOMProdQueueValue      : string;
+  sParseOpasv2ProdAEQueueValue    : string;
+  sParseOPASv3ProdAEQueueValue  : string;
+  sParseDataVar1                : string;
+  sParseDataVar2                : string;
+  sParseDataVar3_Opasv2         : string;
+  sParseHtmlVar1                : string;
+  sParseHtmlVar2                : string;
+  sParseHtmlVar3                : string;
+  sParseHtmlVar4                : string;
+  opasv2prodalarmexport         : string;
+  opasv3prodalarmexp            : string;
+  dsomprodq                     : string;
+  ipsoftprodq                   : string;
+  opasv2                        : string;
+  
+
+dcluser
+  user
+    VUser
+  transactions
+    TInit           : begin;
+    TMain           : 1;
+
+var
+  
+  hFile1, nRead, nWritten,nCheckIterationCounter1,nCheckIterationCounter2,nCheckIterationCounter3: number;
+  nComp1st, nComp2nd, nComp3rd, n1stPos, n2ndPos, n3rdPos: number;
+  NullFileCheckerString, sData, sData1, sData2, sData3, sStringToSearch, sStringToSearchFrom: string;
+  
+  
+  gURL, gID, gPWD, gTextToVerify1,gQueueName1,gQueueName2,gQueueName3,gQueueName4,gQueueName5: string;
+  nTextToVerify1,nBytes2To1,nBytes3To2:number;
+
+dclrand
+
+dclfunc
+  function QValueCheck(QValue       : number;
+                       QName        : string;
+                       QLogFileName : string)
+  begin
+    
+     
+    //## Open the QLogFile
+         
+    StrSetNull(sData);
+    StrSetNull(NullFileCheckerString);
+ 
+    log("Opening QLog file " +QLogFileName+ " for " + QName );
+    FOpen(hFile1, "c:\\temp\\"+ QLogFileName, OPT_FILE_ACCESS_READWRITE, OPT_FILE_OPENCREATE);
+    
+    while FRead(hFile1, sData, 1, nRead) do   //#Read the QLogFile
+        strcat(NullFileCheckerString, sData );
+    end; 
+    
+    //#Find the position of comma(,) in the entire string
+    
+    nBytes2To1:=0;
+    nBytes3To2:=0;
+    
+    sStringToSearch :=",";
+    sStringToSearchFrom := NullFileCheckerString;
+    
+    //Log("String to Search is: "+ sStringToSearch); 
+    //Log("String to Search from is: "+ sStringToSearchFrom);
+    
+    n1stPos := StrSearch(sStringToSearchFrom, sStringToSearch, STR_SEARCH_FIRST);
+    n2ndPos := StrSearch(sStringToSearchFrom, sStringToSearch, STR_SEARCH_NEXT);
+    n3rdPos := StrSearch(sStringToSearchFrom, sStringToSearch, STR_SEARCH_NEXT);
+        
+    //Log("1st Occurence of Comma is at position: "+ string(n1stPos));
+    //Log("2nd Occurence of Comma is at position: "+ string(n2ndPos));
+    //Log("3rd Occurence of Comma is at position: "+ string(n3rdPos));
+    
+    nBytes2To1:=n2ndPos-n1stPos;
+    nBytes3To2:=n3rdPos-n2ndPos;
+    
+    //Log("Total number of Bytes between 2nd & 1st: " +string(nBytes2To1));
+    //Log("Total number of Bytes between 3rd & 2nd: " +string(nBytes3To2));
+    
+    FClose(hFile1);
+    
+    If(StrIsEmpty(String(QValue))) then
+      
+      Log("Unable to retrieve " + QName +" pending messages value");
+      
+      Halt;
+     
+    end;
+    
+    
+    If(StrIsEmpty(NullFileCheckerString)) then   //# If the IPSoftProdQFile is not initialized
+      
+      
+      Log("Adding Queue count for "+QName+" for 1st Iteration");
+      
+      FOpen(hFile1, "c:\\temp\\"+ QLogFileName, OPT_FILE_ACCESS_READWRITE, OPT_FILE_OPEN);
+      FWrite(hFile1, "1,"+String(QValue), STRING_COMPLETE, OPT_FILE_APPEND, nWritten);
+      FClose(hFile1);
+                 
+    end;
+    
+    
+    if (nBytes2To1 <0) then
+      
+      
+            //FClose(hFile1);  
+            Log("Adding Queue count for "+QName+" for 2nd Iteration");
+            FOpen(hFile1, "c:\\temp\\"+ QLogFileName, OPT_FILE_ACCESS_READWRITE, OPT_FILE_OPEN);
+            FWrite(hFile1, "2,"+String(QValue), STRING_COMPLETE, OPT_FILE_APPEND, nWritten);
+            FClose(hFile1);
+             
+    end;
+      
+    if (nBytes3To2 <0) then
+       
+           Log("Adding Queue count for "+QName+" for 3rd Iteration");
+           FOpen(hFile1, "c:\\temp\\"+ QLogFileName, OPT_FILE_ACCESS_READWRITE, OPT_FILE_OPEN);
+           FWrite(hFile1, "3,"+String(QValue), STRING_COMPLETE, OPT_FILE_APPEND, nWritten);
+           FClose(hFile1)
+  
+    end;
+  
+    if (nBytes3To2 > 0) and (nBytes2To1 >0) then
+      
+          
+          Log("Evaluating Queue count for "+QName+" after 3rd Iteration");
+
+          FOpen(hFile1, "c:\\temp\\"+ QLogFileName, OPT_FILE_ACCESS_READWRITE, OPT_FILE_OPEN);
+          
+          //log(string(n1stPos));
+          //Log(string(n2ndPos));
+          //log(string(n3rdPos));
+          
+          FCurrentPositionSet(hFile1, n1stPos, OPT_FILE_BEGIN);       
+          FRead(hFile1, sData1, nBytes2To1-2, nRead);
+          
+          nComp1st := number(sData1);
+          
+          Log("The pending messages in the Queue " +QName+ " at 1st Iteration is: "+ String(nComp1st));
+                   
+          FCurrentPositionSet(hFile1, n2ndPos, OPT_FILE_BEGIN);       
+          FRead(hFile1, sData2, nBytes3To2-2, nRead);  
+          
+          nComp2nd := number(sData2);
+          
+          Log("The pending messages in the Queue " +QName+ " at 2nd Iteration is: "+ String(nComp2nd));
+          
+          FCurrentPositionSet(hFile1, n3rdPos, OPT_FILE_BEGIN);       
+          FRead(hFile1, sData3, 5, nRead);   
+        
+          nComp3rd := number(sData3);
+          
+          Log("The pending messages in the Queue " +QName+ "  at 3rd Iteration is: "+ string(nComp3rd));
+          
+                  
+          
+          if(nComp1st < nComp2nd) and  (nComp2nd < nComp3rd) and (nComp1st > 999) and (nComp2nd > 999) and (nComp3rd > 999) then   
+                           
+               log("The queue " +QName+" has increased in value over three iterations with values being " + String(nComp1st)+","+ String(nComp2nd)+","+ String(nComp3rd)); 
+               
+               RaiseError(CUSTOM_ERROR, "The queue " +QName+" has increased in value over three iterations with values being " + String(nComp1st)+","+ String(nComp2nd)+","+ String(nComp3rd)+". Raising Incident", SEVERITY_ERROR);
+                          
+               FClear(hFile1);
+              
+               FClose(hFile1);
+           
+               else
+           
+               Log("The queue " +QName+" hasnt increased in value over three iterations. Resetting Counters & Values"); 
+               
+               FClear(hFile1);
+                
+               FClose(hFile1);
+               
+          end;
+               
+    end;  
+   
+ end QValueCheck;
+
+dcltrans
+  transaction TInit
+  begin
+    
+    
+    AttributeGetString("URL", gURL);
+    AttributeGetString("ID", gID);
+    AttributeGetString("PWD", gPWD);
+    AttributeGetString("QueueName1", gQueueName1);
+    AttributeGetString("QueueName2", gQueueName2);
+    AttributeGetString("QueueName3", gQueueName3);
+    AttributeGetString("QueueName4", gQueueName4);
+    AttributeGetString("QueueName5", gQueueName5);
+    
+  
+    
+  end TInit;
+
+  transaction TMain
+  var
+  begin
+    
+ 
+    WebSetUserAuthBasic(gID,gPWD);
+
+
+    WebXmlParseNodeAttribute(sParseIPSoftProdQueueValue, STRING_COMPLETE, "//queue[@name='"+gQueueName5+"']/stats","size"); 
+    WebXmlParseNodeAttribute(sParseOpasV2QueueValue, STRING_COMPLETE, "//queue[@name='"+gQueueName4+"']/stats","size");
+    WebXmlParseNodeAttribute(sParseDSOMProdQueueValue, STRING_COMPLETE, "//queue[@name='"+gQueueName3+"']/stats","size");
+    WebXmlParseNodeAttribute(sParseOpasv2ProdAEQueueValue, STRING_COMPLETE, "//queue[@name='"+gQueueName2+"']/stats","size"); 
+    WebXmlParseNodeAttribute(sParseOPASv3ProdAEQueueValue, STRING_COMPLETE, "//queue[@name='"+gQueueName1+"']/stats","size");
+    
+    WebPageUrl(gURL, "dsusfgltmq01 : Queues");
+    
+    
+    log("Value of sParseIPSoftProdQueueValue is: "+ sParseIPSoftProdQueueValue);
+    log("Value of sParseOpasV2QueueValue is: "+ sParseOpasV2QueueValue);
+    log("Value of sParseDSOMProdQueueValue is: "+ sParseDSOMProdQueueValue);
+    log("Value of sParseOpasv2ProdAEQueueValue is: "+ sParseOpasv2ProdAEQueueValue);
+    log("Value of sParseOPASv3ProdAEQueueValue is: "+ sParseOPASv3ProdAEQueueValue);
+
+     
+      
+    QValueCheck(Number(sParseIPSoftProdQueueValue),"IPSoftProd","IPSoftProdQFile.txt");
+    QValueCheck(Number(sParseOpasV2QueueValue),"OPASv2","OPASv2QFile.txt");
+    QValueCheck(Number(sParseDSOMProdQueueValue),"DSOMProd","DSOMProdQFile.txt");
+    QValueCheck(Number(sParseOpasv2ProdAEQueueValue),"OPASv2ProdAlarmExport","OPASv2ProdAlarmExportQFile.txt");
+    QValueCheck(Number(sParseOPASv3ProdAEQueueValue),"OPASv3ProdAlarmExport","OPASv3ProdAlarmExportQFile.txt");
+    
+
+  end TMain;
